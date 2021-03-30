@@ -47,6 +47,8 @@ if __name__ == '__main__':
         os.system(f'rm {file}')
         os.system(f'touch {file}.done')
 
+        print("... done : ", file)
+
     with Pool(args.num_proc) as pool:
 
         for filepath in files:
@@ -57,11 +59,12 @@ if __name__ == '__main__':
             print(local_filepath)
 
             if os.path.isfile(local_filepath+".done"):
+                print("... already done")
                 continue
 
             if not os.path.isfile(local_filepath):
                 flag = os.system('gsutil cp ' + filepath + ' ' + args.tmp_dir)
-                assert flag == 0, 'Failed to download segment %d. Make sure gsutil is installed'%seg_id
+                assert flag == 0, 'Failed to download segment %d. Make sure gsutil is installed'%filepath
 
             pool.apply_async(convert_file, (local_filepath, args.tmp_dir, os.path.join(args.save_dir, args.split)))
             #convert_file(local_filepath, args.tmp_dir, os.path.join(args.save_dir, args.split))

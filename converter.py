@@ -100,7 +100,7 @@ class WaymoToKITTI(object):
 
     def convert_one(self, file_idx):
         pathname = self.tfrecord_pathnames[file_idx]
-        convert_file(pathname)
+        self.convert_file(pathname)
 
     def convert_file(self, pathname):
         print("FROM Converter ; ", pathname)
@@ -113,7 +113,8 @@ class WaymoToKITTI(object):
         #create and open pose file
 
         calibs = {}
-        labels = {}
+        lidar_labels = {}
+        camera_labels = {}
         poses = {}
 
         #create and open label file
@@ -136,7 +137,9 @@ class WaymoToKITTI(object):
             # self.save_lidar(frame, frame_idx, sgmt_name)
 
             # parse label files
-            labels[frame_idx] = self.save_label(frame, frame_idx, sgmt_name)
+            lidar_labels[frame_idx] = self.save_lidar_label(frame, frame_idx, sgmt_name)
+
+            camera_labels[frame_idx] = self.save_camera_label(frame, frame_idx, sgmt_name)
 
             # parse pose files
             poses[frame_idx] = self.save_pose(frame, frame_idx, sgmt_name)
@@ -152,9 +155,13 @@ class WaymoToKITTI(object):
         with open(pose_file, 'wb') as f:
             pickle.dump(poses, f, pickle.HIGHEST_PROTOCOL)
 
-        label_file = join(self.save_dir, sgmt_name, self.label_save_dir + '.pkl')
+        label_file = join(self.save_dir, sgmt_name, "lidar_"+self.label_save_dir + '.pkl')
         with open(label_file, 'wb') as f:
-            pickle.dump(labels, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(lidar_labels, f, pickle.HIGHEST_PROTOCOL)
+
+        label_file = join(self.save_dir, sgmt_name, "camera_"+self.label_save_dir + '.pkl')
+        with open(label_file, 'wb') as f:
+            pickle.dump(camera_labels, f, pickle.HIGHEST_PROTOCOL)
 
     def __len__(self):
         return len(self.tfrecord_pathnames)
@@ -349,7 +356,34 @@ class WaymoToKITTI(object):
         pc_path = join(self.save_dir, sgmt_name, self.point_cloud_save_dir, str(frame_idx).zfill(3) + '.bin')
         point_cloud.astype(np.float32).tofile(pc_path)  # note: must save as float32, otherwise loading errors
 
-    def save_label(self, frame, frame_idx ,sgmt_name):
+    def save_camera_label(self, frame, frame_idx ,sgmt_name):
+
+        labels = {
+            "5":[],
+            "1":[],
+            "2":[],
+            "3":[],
+            "4":[],
+        }
+
+        for camera in frame.camera_labels:
+            name = camera.name
+            for obj in camera.labels:
+                bbox = [obj.box.center_x, obj.box.center_y,
+                        obj.box.length, obj.box.width]
+
+                item = {
+                    "bbox" : bbox,
+                    "camera_id" : name,
+                    "track_id" : obj.id,
+                    "class" : obj.type
+                }
+
+                labels[str(name)].append(item)
+
+        return labels
+
+    def save_lidar_label(self, frame, frame_idx ,sgmt_name):
         """ parse and save the label data in .txt format
                 :param frame: open dataset frame proto
                 :param file_idx: the current file number
@@ -363,6 +397,7 @@ class WaymoToKITTI(object):
         # preprocess bounding box data
         id_to_bbox = dict()
         id_to_name = dict()
+
         for labels in frame.projected_lidar_labels:
             name = labels.name
             for label in labels.labels:
@@ -381,10 +416,8 @@ class WaymoToKITTI(object):
             "4":[],
         }
 
-
         # print([i.type for i in frame.laser_labels])
         for obj in frame.laser_labels:
-
             # calculate bounding box
             bounding_box = None
             name = None
@@ -409,89 +442,10 @@ class WaymoToKITTI(object):
             if filter_empty_3dboxes and obj.num_lidar_points_in_box < 1:
                 continue
 
-            # from waymo_open_dataset.utils.box_utils import compute_num_points_in_box_3d
-            # print('annot:', obj.num_lidar_points_in_box)
-            # num_points_in_gt_waymo = compute_num_points_in_box_3d(
-            #     tf.convert_to_tensor(self.pc.astype(np.float32), dtype=tf.float32),
-            #     tf.convert_to_tensor(np.array([[obj.box.center_x, obj.box.center_y, obj.box.center_z,  obj.box.length,obj.box.width,  obj.box.height,obj.box.heading]]).astype(np.float32), dtype=tf.float32))
-            # print('actual:', num_points_in_gt_waymo.numpy())
-
-            # visualizer
-            # [261   56   24   15   46  254   24  824  146   26    5   13   30   45
-            #  60  184  347  222 1774    2   46]
-
-            # converter
-            # 264, 59, 24, 16, 51, 268, 24, 847, 149, 28, 6, 13, 30, 45, \
-            # 64, 192, 353, 229, 1848, 2, 48
-
-            # my_type = self.waymo_to_kitti_class_map[my_type]
-
-            # # length: along the longer axis that is perpendicular to gravity direction
-            # # width: along the shorter axis  that is perpendicular to gravity direction
-            # # height: along the gravity direction
-            # # the same for waymo and kitti
-            # height = obj.box.height  # up/down
-            # width = obj.box.width  # left/right
-            # length = obj.box.length  # front/back
-
-            # # waymo: bbox label in lidar/vehicle frame. kitti: bbox label in reference image frame
-            # # however, kitti uses bottom center as the box origin, whereas waymo uses the true center
-            # x = obj.box.center_x
-            # y = obj.box.center_y
-            # z = obj.box.center_z - height / 2
-
-            # # print('bef', x,y,z)
-
-            # # project bounding box to the virtual reference frame
-            # pt_ref = self.cart_to_homo(self.T_front_cam_to_ref) @ self.T_vehicle_to_front_cam @ np.array([x,y,z,1]).reshape((4,1))
-            # x, y, z, _ = pt_ref.flatten().tolist()
-
-            # # print('aft', x,y,z)
-
-            # # x, y, z correspond to l, w, h (waymo) -> l, h, w (kitti)
-            # # length, width, height = length, height, width
-
-            # # front-left-up (waymo) -> right-down-front(kitti)
-            # # bbox origin at volumetric center (waymo) -> bottom center (kitti)
-            # # x, y, z = -waymo_y, -waymo_z + height / 2, waymo_x
-
-            # # rotation: +x around y-axis (kitti) -> +x around y-axis (waymo)
-            # #           right-down-front            front-left-up
-            # # note: the "rotation_y" is kept as the name of the rotation variable for compatibility
-            # # it is, in fact, rotation around positive z
-            # rotation_y = -obj.box.heading - np.pi / 2
 
             # track id
             track_id = obj.id
 
-            # # not availablefp_label_all
-            # truncated = 0
-            # occluded = 0
-
-            # # alpha:
-            # # we set alpha to the default -10, the same as nuscenes to kitti tool
-            # # contribution is welcome
-            # alpha = -10
-
-            # # save the labels
-            # line = my_type + ' {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n'.format(round(truncated, 2),
-            #                                                                        occluded,
-            #                                                                        round(alpha, 2),
-            #                                                                        round(bounding_box[0], 2),
-            #                                                                        round(bounding_box[1], 2),
-            #                                                                        round(bounding_box[2], 2),
-            #                                                                        round(bounding_box[3], 2),
-            #                                                                        round(height, 2),
-            #                                                                        round(width, 2),
-            #                                                                        round(length, 2),
-            #                                                                        round(x, 2),
-            #                                                                        round(y, 2),
-            #                                                                        round(z, 2),
-            #                                                                        round(rotation_y, 2))
-            # if save_track_id:
-            #     line_all = line[:-1] + ' ' + name + ' ' + track_id + '\n'
-            # else:
-            #     line_all = line[:-1] + ' ' + name + '\n'
 
             box_3d = [
                 obj.box.center_x,
@@ -506,7 +460,7 @@ class WaymoToKITTI(object):
 
 
             item = {
-                "bbox" : bounding_box,
+                "bbox_proj" : bounding_box,
                 "bbox_3d" : box_3d,
                 "camera_id" : name,
                 "track_id" : track_id,
@@ -517,18 +471,7 @@ class WaymoToKITTI(object):
 
             labels[name].append(item)
 
-            # # store the label
-            # lbl_path = join(self.save_dir, sgmt_name, self.label_save_dir + name, str(frame_idx).zfill(3) + '.txt')
-            # fp_label = open(lbl_path, 'a')
-            # fp_label.write(line)
-            # fp_label.close()
-
-            # fp_label_all.write(line_all)
-
         return labels
-        # fp_label_all.close()
-
-        # print(file_idx, frame_idx)
 
     def save_pose(self, frame, frame_idx, sgmt_name):
         """ Save self driving car (SDC)'s own pose
