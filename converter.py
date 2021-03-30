@@ -359,7 +359,7 @@ class WaymoToKITTI(object):
     def save_camera_label(self, frame, frame_idx ,sgmt_name):
 
         labels = {
-            "5":[],
+            "0":[],
             "1":[],
             "2":[],
             "3":[],
@@ -367,7 +367,7 @@ class WaymoToKITTI(object):
         }
 
         for camera in frame.camera_labels:
-            name = camera.name
+            name = str(camera.name-1)
             for obj in camera.labels:
                 bbox = [obj.box.center_x, obj.box.center_y,
                         obj.box.length, obj.box.width]
